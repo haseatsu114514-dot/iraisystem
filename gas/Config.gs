@@ -40,6 +40,12 @@ const ASTRA_CONFIG = Object.freeze({
     NEEDS_REVIEW: '要確認',
     CONFIRMED: '確認済み'
   }),
+  ADDRESS_REVIEW_STATUS: Object.freeze({
+    UNREVIEWED: '未確認',
+    NO_ATTACHMENT: '住民票等未提出',
+    NEEDS_COMPARISON: '要照合',
+    CONFIRMED: '確認済み'
+  }),
   SHEETS: Object.freeze({
     LOG: '処理ログ',
     DOCUMENTS: '生成書類管理',
@@ -50,6 +56,8 @@ const ASTRA_CONFIG = Object.freeze({
     '【システム】案件ID',
     '【システム】確認状態',
     '【システム】確認事項',
+    '【システム】書類転記住所',
+    '【システム】住所確認状態',
     '【システム】顧客フォルダID',
     '【システム】顧客フォルダURL',
     '【システム】生成書類URL',
@@ -71,6 +79,13 @@ const ASTRA_CONFIG = Object.freeze({
     DETAILS: '依頼内容の詳細',
     CONSENT: '個人情報の利用目的への同意',
     NOTES: '備考・連絡事項'
+  }),
+  OPTIONAL_SOURCE_HEADERS: Object.freeze({
+    RESIDENT_RECORD_ATTACHMENTS: Object.freeze([
+      '住民票等の画像（任意）',
+      '住民票画像（任意）',
+      '住民票・登記簿等（任意）'
+    ])
   })
 });
 

@@ -31,6 +31,7 @@ function ensureSystemColumns_(sheet) {
 
   const statusColumn = headers.indexOf('【システム】処理状態') + 1;
   const reviewColumn = headers.indexOf('【システム】確認状態') + 1;
+  const addressReviewColumn = headers.indexOf('【システム】住所確認状態') + 1;
   if (addedColumns && sheet.getMaxRows() > ASTRA_CONFIG.HEADER_ROW) {
     const rowCount = sheet.getMaxRows() - ASTRA_CONFIG.HEADER_ROW;
     sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, statusColumn, rowCount).setDataValidation(
@@ -45,6 +46,14 @@ function ensureSystemColumns_(sheet) {
       SpreadsheetApp.newDataValidation()
         .requireValueInList(Object.keys(ASTRA_CONFIG.REVIEW_STATUS).map(function(key) {
           return ASTRA_CONFIG.REVIEW_STATUS[key];
+        }), true)
+        .setAllowInvalid(true)
+        .build()
+    );
+    sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, addressReviewColumn, rowCount).setDataValidation(
+      SpreadsheetApp.newDataValidation()
+        .requireValueInList(Object.keys(ASTRA_CONFIG.ADDRESS_REVIEW_STATUS).map(function(key) {
+          return ASTRA_CONFIG.ADDRESS_REVIEW_STATUS[key];
         }), true)
         .setAllowInvalid(true)
         .build()
@@ -187,7 +196,8 @@ function writeSettingsSnapshot_(sheet) {
     ['TEMPLATE_CONFIRMATION_ID', properties.TEMPLATE_CONFIRMATION_ID || '', '申請内容確認書テンプレート'],
     ['TEMPLATE_REQUIREMENTS_ID', properties.TEMPLATE_REQUIREMENTS_ID || '', '必要書類リストテンプレート'],
     ['PDF_ENABLED', properties.PDF_ENABLED || 'false', 'true のときPDFも生成'],
-    ['注意', '住所は自動変換しない', '警告後、行政書士が原本と照合する']
+    ['注意', '住所は自動変換しない', '顧客入力を暫定転記し、行政書士が必要に応じて修正・照合する'],
+    ['住民票等', '提出は任意', '問い合わせ段階の入力負担を増やさない']
   ];
   if (sheet.getLastRow() > 1) sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).clearContent();
   sheet.getRange(2, 1, rows.length, 3).setValues(rows);

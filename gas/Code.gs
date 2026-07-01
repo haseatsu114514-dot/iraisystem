@@ -57,6 +57,8 @@ function processSubmissionWithLock_(rowNumber, force) {
 function processSubmissionRow_(sheet, rowNumber, force) {
   ensureSystemColumns_(sheet);
   let rowData = readSubmissionRow_(sheet, rowNumber);
+  initializeAddressReviewFields_(sheet, rowNumber, rowData);
+  rowData = readSubmissionRow_(sheet, rowNumber);
   const previousStatus = getSystemValue_(rowData, '【システム】処理状態');
   if (!force && previousStatus === ASTRA_CONFIG.STATUS.GENERATED) return;
 
@@ -122,6 +124,21 @@ function processSubmissionRow_(sheet, rowNumber, force) {
     notifySystemError_(caseId, rowNumber, error);
     throw error;
   }
+}
+
+function initializeAddressReviewFields_(sheet, rowNumber, rowData) {
+  const currentAddress = getSystemValue_(rowData, '【システム】書類転記住所');
+  const currentStatus = getSystemValue_(rowData, '【システム】住所確認状態');
+  const updates = {};
+  if (!currentAddress && rowData.submission.addressOriginal) {
+    updates['【システム】書類転記住所'] = rowData.submission.addressOriginal;
+  }
+  if (!currentStatus) {
+    updates['【システム】住所確認状態'] = rowData.submission.residentRecordAttachments
+      ? ASTRA_CONFIG.ADDRESS_REVIEW_STATUS.NEEDS_COMPARISON
+      : ASTRA_CONFIG.ADDRESS_REVIEW_STATUS.NO_ATTACHMENT;
+  }
+  if (Object.keys(updates).length) writeSystemValues_(sheet, rowNumber, updates);
 }
 
 function reprocessActiveRow() {

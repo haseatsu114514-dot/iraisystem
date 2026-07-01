@@ -65,6 +65,8 @@ function ensureDefaultTemplates_() {
     body.appendParagraph('代表者名: {{代表者名}}');
     body.appendParagraph('郵便番号: {{郵便番号}}');
     body.appendParagraph('顧客入力住所（原文）: {{住所または本店所在地}}');
+    body.appendParagraph('書類転記住所（修正可）: {{書類転記住所}}');
+    body.appendParagraph('住民票等の提出状況: {{住民票等の提出状況}}');
     body.appendParagraph('電話番号: {{電話番号}}');
     body.appendParagraph('メールアドレス: {{メールアドレス}}');
     body.appendParagraph('依頼したい業務: {{依頼したい業務}}');
@@ -129,6 +131,8 @@ function buildTemplateData_(submission, caseId, validation) {
     '代表者名': submission.representative,
     '郵便番号': submission.postalCode,
     '住所または本店所在地': submission.addressOriginal,
+    '書類転記住所': submission.addressForDocuments,
+    '住民票等の提出状況': submission.residentRecordAttachments ? '任意添付あり（要目視確認）' : '未提出（任意）',
     '電話番号': submission.phone,
     'メールアドレス': submission.email,
     '依頼したい業務': submission.business,

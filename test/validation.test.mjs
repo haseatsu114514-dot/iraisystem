@@ -25,6 +25,9 @@ function validSubmission(overrides = {}) {
     representative: '',
     postalCode: '160-0023',
     addressOriginal: '東京都新宿区西新宿一丁目2番地1号',
+    addressForDocuments: '東京都新宿区西新宿一丁目2番地1号',
+    addressReviewStatus: '未確認',
+    residentRecordAttachments: '',
     phone: '090-1234-5678',
     email: 'test@example.com',
     businessOriginal: '建設業許可',
@@ -73,6 +76,29 @@ test('同意なしは生成停止対象', () => {
   context.sample = validSubmission({ consent: '' });
   const result = evaluate('validateSubmission_(sample)');
   assert.ok(result.errors.some((error) => error.includes('同意')));
+});
+
+test('住民票等が未提出でも生成停止にはしない', () => {
+  context.sample = validSubmission({ residentRecordAttachments: '' });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.deepEqual([...result.errors], []);
+  assert.ok(result.warnings.some((warning) => warning.includes('暫定転記')));
+});
+
+test('任意添付がある場合は目視照合を促す', () => {
+  context.sample = validSubmission({ residentRecordAttachments: 'https://drive.example/dummy' });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.ok(result.warnings.some((warning) => warning.includes('目視')));
+});
+
+test('行政書士が確認済みにした住所は自動表記警告を抑止する', () => {
+  context.sample = validSubmission({
+    addressOriginal: '東京都新宿区西新宿1-2-1',
+    addressForDocuments: '東京都新宿区西新宿1-2-1',
+    addressReviewStatus: '確認済み'
+  });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.ok(!result.warnings.some((warning) => warning.includes('ハイフン')));
 });
 
 test('Drive名から危険文字を取り除く', () => {

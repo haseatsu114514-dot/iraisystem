@@ -45,5 +45,9 @@ await fs.copyFile(
   path.join(root, 'docs', 'ACCEPTANCE_CHECKLIST.md'),
   path.join(docsOutput, 'ACCEPTANCE_CHECKLIST.md')
 );
+await fs.copyFile(
+  path.join(root, 'docs', 'REQUIREMENTS.md'),
+  path.join(docsOutput, 'REQUIREMENTS.md')
+);
 
 console.log(releaseRoot);

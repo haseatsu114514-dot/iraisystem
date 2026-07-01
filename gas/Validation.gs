@@ -3,6 +3,7 @@
  */
 function normalizeSubmission_(rowValues) {
   const headers = ASTRA_CONFIG.SOURCE_HEADERS;
+  const addressOriginal = stringValue_(rowValues[headers.ADDRESS]);
   return {
     timestamp: stringValue_(rowValues[headers.TIMESTAMP]),
     applicantType: stringValue_(rowValues[headers.APPLICANT_TYPE]),
@@ -10,7 +11,13 @@ function normalizeSubmission_(rowValues) {
     nameKana: stringValue_(rowValues[headers.NAME_KANA]),
     representative: stringValue_(rowValues[headers.REPRESENTATIVE]),
     postalCode: stringValue_(rowValues[headers.POSTAL_CODE]),
-    addressOriginal: stringValue_(rowValues[headers.ADDRESS]),
+    addressOriginal: addressOriginal,
+    addressForDocuments: stringValue_(rowValues['【システム】書類転記住所']) || addressOriginal,
+    addressReviewStatus: stringValue_(rowValues['【システム】住所確認状態']),
+    residentRecordAttachments: firstNonEmptyHeaderValue_(
+      rowValues,
+      ASTRA_CONFIG.OPTIONAL_SOURCE_HEADERS.RESIDENT_RECORD_ATTACHMENTS
+    ),
     phone: stringValue_(rowValues[headers.PHONE]),
     email: stringValue_(rowValues[headers.EMAIL]),
     businessOriginal: stringValue_(rowValues[headers.BUSINESS]),
@@ -51,9 +58,20 @@ function validateSubmission_(submission) {
     }
   }
 
-  detectAddressWarnings_(submission.addressOriginal).forEach(function(message) {
-    warnings.push(message);
-  });
+  if (submission.addressReviewStatus !== ASTRA_CONFIG.ADDRESS_REVIEW_STATUS.CONFIRMED) {
+    detectAddressWarnings_(submission.addressOriginal).forEach(function(message) {
+      warnings.push(message);
+    });
+    if (submission.residentRecordAttachments) {
+      warnings.push('住民票等の任意添付があります。書類転記住所と目視で照合してください。');
+    } else {
+      warnings.push('住民票等は未提出です。顧客入力住所を暫定転記しています。');
+    }
+  }
+
+  if (submission.addressForDocuments && submission.addressForDocuments !== submission.addressOriginal) {
+    warnings.push('書類転記住所が顧客入力住所から変更されています。変更根拠を確認してください。');
+  }
 
   if (/法人|会社|個人事業主/.test(submission.applicantType) && !submission.representative) {
     warnings.push('法人・個人事業主の場合の代表者名が未入力です。');
@@ -116,6 +134,14 @@ function uniqueStrings_(items) {
   return items.filter(function(item, index, source) {
     return item && source.indexOf(item) === index;
   });
+}
+
+function firstNonEmptyHeaderValue_(rowValues, candidateHeaders) {
+  for (let index = 0; index < candidateHeaders.length; index += 1) {
+    const value = stringValue_(rowValues[candidateHeaders[index]]);
+    if (value) return value;
+  }
+  return '';
 }
 
 function sanitizeDriveName_(value) {
