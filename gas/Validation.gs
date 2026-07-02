@@ -21,7 +21,8 @@ function normalizeSubmission_(rowValues) {
     phone: stringValue_(rowValues[headers.PHONE]),
     email: stringValue_(rowValues[headers.EMAIL]),
     businessOriginal: stringValue_(rowValues[headers.BUSINESS]),
-    business: normalizeBusiness_(rowValues[headers.BUSINESS]),
+    business: normalizeBusiness_(rowValues[headers.BUSINESS]) ||
+      (stringValue_(rowValues[headers.BUSINESS]) ? 'その他' : ''),
     details: stringValue_(rowValues[headers.DETAILS]),
     consent: stringValue_(rowValues[headers.CONSENT]),
     notes: stringValue_(rowValues[headers.NOTES])
@@ -37,7 +38,11 @@ function validateSubmission_(submission) {
   if (!submission.addressOriginal) errors.push('住所または本店所在地が未入力です。');
   if (!submission.phone) errors.push('電話番号が未入力です。');
   if (!submission.email) errors.push('メールアドレスが未入力です。');
-  if (!submission.business) errors.push('依頼したい業務を判定できません。');
+  if (!submission.businessOriginal && !submission.business) {
+    errors.push('依頼したい業務が未入力です。');
+  } else if (submission.businessOriginal && !normalizeBusiness_(submission.businessOriginal)) {
+    warnings.push('依頼したい業務を自動判定できなかったため「その他」として扱いました。業務区分を確認してください。');
+  }
   if (!isAffirmative_(submission.consent)) {
     errors.push('個人情報の利用目的への同意を確認できません。');
   }
@@ -67,10 +72,9 @@ function validateSubmission_(submission) {
     } else {
       warnings.push('住民票等は未提出です。顧客入力住所を暫定転記しています。');
     }
-  }
-
-  if (submission.addressForDocuments && submission.addressForDocuments !== submission.addressOriginal) {
-    warnings.push('書類転記住所が顧客入力住所から変更されています。変更根拠を確認してください。');
+    if (submission.addressForDocuments && submission.addressForDocuments !== submission.addressOriginal) {
+      warnings.push('書類転記住所が顧客入力住所から変更されています。変更根拠を確認してください。');
+    }
   }
 
   if (/法人|会社|個人事業主/.test(submission.applicantType) && !submission.representative) {

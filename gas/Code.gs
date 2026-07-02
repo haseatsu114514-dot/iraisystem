@@ -5,6 +5,7 @@ function onOpen() {
     .addSeparator()
     .addItem('未処理を今すぐ実行', 'processPendingSubmissions')
     .addItem('選択中の回答を再生成', 'reprocessActiveRow')
+    .addItem('選択中の回答のPDFを書き出す', 'exportActiveRowPdf')
     .addSeparator()
     .addItem('セルフテストを実行', 'runAstraSelfTests')
     .addToUi();
@@ -15,12 +16,16 @@ function setupAstraSystem() {
   const responseSheet = getResponseSheet_();
   assertRequiredSourceHeaders_(responseSheet);
   ensureSystemColumns_(responseSheet);
+  const legacyCount = markLegacyRowsSkipped_(responseSheet);
   ensureManagementSheets_();
   ensureDefaultTemplates_();
   installAstraTriggers_();
   writeSettingsSnapshot_(getResponseSpreadsheet_().getSheetByName(ASTRA_CONFIG.SHEETS.SETTINGS));
-  appendLog_('INFO', '', '', '初期設定', '初期設定とトリガー作成が完了しました。');
-  getResponseSpreadsheet_().toast('初期設定が完了しました。', 'アストラ書類システム', 8);
+  const legacyMessage = legacyCount
+    ? ' 既存の回答' + legacyCount + '行は「' + ASTRA_CONFIG.STATUS.SKIPPED + '」にしました。処理したい行は処理状態を「' + ASTRA_CONFIG.STATUS.PENDING + '」へ変更してください。'
+    : '';
+  appendLog_('INFO', '', '', '初期設定', '初期設定とトリガー作成が完了しました。' + legacyMessage);
+  getResponseSpreadsheet_().toast('初期設定が完了しました。' + legacyMessage, 'アストラ書類システム', 10);
 }
 
 function processPendingSubmissions() {
@@ -29,6 +34,7 @@ function processPendingSubmissions() {
   try {
     const sheet = getResponseSheet_();
     ensureSystemColumns_(sheet);
+    markExhaustedProcessingRows_(sheet);
     const rows = findProcessableRows_(sheet, ASTRA_CONFIG.MAX_ROWS_PER_RUN);
     rows.forEach(function(rowNumber) {
       try {
@@ -142,16 +148,66 @@ function initializeAddressReviewFields_(sheet, rowNumber, rowData) {
 }
 
 function reprocessActiveRow() {
+  const rowNumber = getActiveResponseRowNumber_('再生成したい行を選択してください。');
+  processSubmissionWithLock_(rowNumber, true);
+  getResponseSpreadsheet_().toast('選択行を再生成しました。', 'アストラ書類システム', 5);
+}
+
+function exportActiveRowPdf() {
+  const rowNumber = getActiveResponseRowNumber_('PDFを書き出したい行を選択してください。');
+  const sheet = getResponseSheet_();
+  const rowData = readSubmissionRow_(sheet, rowNumber);
+  const caseId = getSystemValue_(rowData, '【システム】案件ID');
+  const documentUrls = getSystemValue_(rowData, '【システム】生成書類URL')
+    .split('\n')
+    .map(function(url) { return url.trim(); })
+    .filter(function(url) { return Boolean(url); });
+  if (!documentUrls.length) {
+    throw new Error('この行には生成書類がありません。先に書類を生成してください。');
+  }
+  const folderId = getSystemValue_(rowData, '【システム】顧客フォルダID');
+  if (!folderId) {
+    throw new Error('顧客フォルダIDが未設定のためPDFを保存できません。');
+  }
+  const folder = DriveApp.getFolderById(folderId);
+  const suffix = Utilities.formatDate(new Date(), ASTRA_CONFIG.TIME_ZONE, 'yyyyMMdd_HHmmss');
+  const created = [];
+
+  documentUrls.forEach(function(url) {
+    const match = url.match(/\/d\/([-\w]+)/) || url.match(/[-\w]{25,}/);
+    if (!match) return;
+    const file = DriveApp.getFileById(match[1] || match[0]);
+    const pdfBlob = file.getAs(MimeType.PDF).setName(file.getName() + '_' + suffix + '.pdf');
+    const pdfFile = folder.createFile(pdfBlob);
+    appendDocumentRecord_({
+      caseId: caseId,
+      rowNumber: rowNumber,
+      type: 'PDF手動書き出し',
+      fileId: pdfFile.getId(),
+      name: pdfFile.getName(),
+      url: file.getUrl(),
+      pdfUrl: pdfFile.getUrl()
+    });
+    created.push(pdfFile.getName());
+  });
+
+  if (!created.length) {
+    throw new Error('生成書類URLからファイルを特定できませんでした。');
+  }
+  appendLog_('INFO', caseId, rowNumber, 'PDF書き出し', created.length + '件のPDFを顧客フォルダへ保存しました。');
+  getResponseSpreadsheet_().toast(created.length + '件のPDFを書き出しました。', 'アストラ書類システム', 5);
+}
+
+function getActiveResponseRowNumber_(actionMessage) {
   const sheet = SpreadsheetApp.getActiveSheet();
-  if (sheet.getName() !== ASTRA_CONFIG.RESPONSE_SHEET_NAME) {
-    throw new Error('回答シートで再生成したい行を選択してください。');
+  if (sheet.getName() !== getResponseSheetName_()) {
+    throw new Error('回答シートで' + actionMessage);
   }
   const rowNumber = sheet.getActiveRange().getRow();
   if (rowNumber <= ASTRA_CONFIG.HEADER_ROW) {
     throw new Error('ヘッダー以外の回答行を選択してください。');
   }
-  processSubmissionWithLock_(rowNumber, true);
-  getResponseSpreadsheet_().toast('選択行を再生成しました。', 'アストラ書類システム', 5);
+  return rowNumber;
 }
 
 function notifySystemError_(caseId, rowNumber, error) {

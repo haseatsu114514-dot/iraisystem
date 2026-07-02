@@ -17,6 +17,14 @@ function runAstraSelfTests() {
     sample.consent = '';
     assertTrue_(validateSubmission_(sample).errors.length > 0);
   }));
+  tests.push(runTest_('判定できない業務はその他扱いで止めない', function() {
+    const submission = normalizeSubmission_({ '依頼したい業務': '飲食店営業の相談' });
+    assertEqual_('その他', submission.business);
+    const sample = createValidTestSubmission_();
+    sample.businessOriginal = '飲食店営業の相談';
+    sample.business = 'その他';
+    assertEqual_(0, validateSubmission_(sample).errors.length);
+  }));
 
   const failed = tests.filter(function(test) { return !test.ok; });
   const message = tests.map(function(test) {

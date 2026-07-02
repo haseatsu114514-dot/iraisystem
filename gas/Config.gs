@@ -1,25 +1,28 @@
 /**
  * アストラ書類自動作成システムの設定。
- * 本番値は Script Properties を優先し、DEFAULT_IDS は初回設定の既定値にだけ使う。
+ * フォルダ等のIDはリポジトリへ書かず、Script Properties で設定する。
+ * DEFAULT_IDS は導入先ごとに埋める場合の初期値枠（空のままでよい）。
  */
 const ASTRA_CONFIG = Object.freeze({
-  VERSION: '0.1.0',
+  VERSION: '0.2.0',
   TIME_ZONE: 'Asia/Tokyo',
   RESPONSE_SHEET_NAME: 'フォームの回答 1',
   HEADER_ROW: 1,
   MAX_ROWS_PER_RUN: 10,
+  MAX_ATTEMPTS: 3,
   PROCESSING_TIMEOUT_MINUTES: 15,
   WORKER_INTERVAL_MINUTES: 5,
   DEFAULT_IDS: Object.freeze({
-    ROOT_FOLDER_ID: '12UA4QRlVYNIm2XJ8TG5SkM56vYWGIj0G',
-    RESPONSE_SPREADSHEET_ID: '14GZqV-axuZbNv54TOyv73P94gUIZ19D0uMYCQ7gb8AA',
-    OUTPUT_FOLDER_ID: '18Fanr4EfWlWf8n6SC0UQjSc234CXms18',
-    TEMPLATE_FOLDER_ID: '1hH-DwV9SR1-cfMig4xH6rPZpEXdsTBVE',
-    GAS_FOLDER_ID: '1b8d470IAkndIyY5hgKhISIvvNbUbXhOP'
+    ROOT_FOLDER_ID: '',
+    RESPONSE_SPREADSHEET_ID: '',
+    OUTPUT_FOLDER_ID: '',
+    TEMPLATE_FOLDER_ID: '',
+    GAS_FOLDER_ID: ''
   }),
   PROPERTY_KEYS: Object.freeze({
     ROOT_FOLDER_ID: 'ROOT_FOLDER_ID',
     RESPONSE_SPREADSHEET_ID: 'RESPONSE_SPREADSHEET_ID',
+    RESPONSE_SHEET_NAME: 'RESPONSE_SHEET_NAME',
     OUTPUT_FOLDER_ID: 'OUTPUT_FOLDER_ID',
     TEMPLATE_FOLDER_ID: 'TEMPLATE_FOLDER_ID',
     GAS_FOLDER_ID: 'GAS_FOLDER_ID',
@@ -33,7 +36,8 @@ const ASTRA_CONFIG = Object.freeze({
     PROCESSING: '処理中',
     GENERATED: '生成済み',
     NEEDS_INPUT: '入力不備',
-    ERROR: 'エラー'
+    ERROR: 'エラー',
+    SKIPPED: '対象外（導入前）'
   }),
   REVIEW_STATUS: Object.freeze({
     UNREVIEWED: '未確認',
@@ -95,7 +99,9 @@ function setDefaultScriptProperties_() {
   const updates = {};
 
   Object.keys(ASTRA_CONFIG.DEFAULT_IDS).forEach(function(key) {
-    if (!current[key]) updates[key] = ASTRA_CONFIG.DEFAULT_IDS[key];
+    if (!current[key] && ASTRA_CONFIG.DEFAULT_IDS[key]) {
+      updates[key] = ASTRA_CONFIG.DEFAULT_IDS[key];
+    }
   });
 
   if (!current.PDF_ENABLED) updates.PDF_ENABLED = 'false';
@@ -113,4 +119,9 @@ function getScriptProperty_(key, required) {
 
 function isPdfEnabled_() {
   return getScriptProperty_(ASTRA_CONFIG.PROPERTY_KEYS.PDF_ENABLED, false) === 'true';
+}
+
+function getResponseSheetName_() {
+  return getScriptProperty_(ASTRA_CONFIG.PROPERTY_KEYS.RESPONSE_SHEET_NAME, false) ||
+    ASTRA_CONFIG.RESPONSE_SHEET_NAME;
 }

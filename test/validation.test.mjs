@@ -61,6 +61,25 @@ test('業務名の揺れを正規化する', () => {
   assert.equal(evaluate(`normalizeBusiness_('補助金について')`), '補助金業務');
 });
 
+test('判定できない業務はその他として受け付ける', () => {
+  context.row = { '依頼したい業務': '飲食店営業の相談' };
+  const submission = evaluate('normalizeSubmission_(row)');
+  assert.equal(submission.business, 'その他');
+});
+
+test('判定できない業務は警告付きで生成を止めない', () => {
+  context.sample = validSubmission({ businessOriginal: '飲食店営業の相談', business: 'その他' });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.deepEqual([...result.errors], []);
+  assert.ok(result.warnings.some((warning) => warning.includes('自動判定できなかった')));
+});
+
+test('業務が未入力ならエラーにする', () => {
+  context.sample = validSubmission({ businessOriginal: '', business: '' });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.ok(result.errors.some((error) => error.includes('依頼したい業務')));
+});
+
 test('同意文が長くても同意として扱う', () => {
   assert.equal(evaluate(`isAffirmative_('個人情報の利用目的に同意します')`), true);
   assert.equal(evaluate(`isAffirmative_('同意しません')`), false);
@@ -99,6 +118,26 @@ test('行政書士が確認済みにした住所は自動表記警告を抑止�
   });
   const result = evaluate('validateSubmission_(sample)');
   assert.ok(!result.warnings.some((warning) => warning.includes('ハイフン')));
+});
+
+test('確認済みの住所は転記住所変更の警告を出さない', () => {
+  context.sample = validSubmission({
+    addressOriginal: '東京都新宿区西新宿1-2-1',
+    addressForDocuments: '東京都新宿区西新宿一丁目2番1号',
+    addressReviewStatus: '確認済み'
+  });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.ok(!result.warnings.some((warning) => warning.includes('変更されています')));
+});
+
+test('未確認のまま転記住所が変わっていれば警告する', () => {
+  context.sample = validSubmission({
+    addressOriginal: '東京都新宿区西新宿一丁目2番地1号',
+    addressForDocuments: '東京都新宿区西新宿一丁目2番1号',
+    addressReviewStatus: '未確認'
+  });
+  const result = evaluate('validateSubmission_(sample)');
+  assert.ok(result.warnings.some((warning) => warning.includes('変更されています')));
 });
 
 test('Drive名から危険文字を取り除く', () => {

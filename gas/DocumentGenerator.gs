@@ -78,13 +78,19 @@ function replaceTemplateTags_(document, data) {
 
   Object.keys(data).forEach(function(key) {
     const pattern = escapeRegExp_('{{' + key + '}}');
-    const replacement = escapeReplacementText_(data[key]);
+    // DocumentApp の replaceText は置換文字列をリテラル扱いするため、エスケープしない。
+    const replacement = stringValue_(data[key]);
     containers.forEach(function(container) {
       container.replaceText(pattern, replacement);
     });
   });
 
-  const unresolved = document.getBody().getText().match(/\{\{[^{}]+\}\}/g) || [];
+  const unresolved = [];
+  containers.forEach(function(container) {
+    (container.getText().match(/\{\{[^{}]+\}\}/g) || []).forEach(function(tag) {
+      unresolved.push(tag);
+    });
+  });
   if (unresolved.length) {
     throw new Error('未置換の差込タグがあります: ' + uniqueStrings_(unresolved).join(', '));
   }
@@ -92,10 +98,4 @@ function replaceTemplateTags_(document, data) {
 
 function escapeRegExp_(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function escapeReplacementText_(value) {
-  return stringValue_(value)
-    .replace(/\\/g, '\\\\')
-    .replace(/\$/g, '\\$');
 }

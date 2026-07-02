@@ -2,15 +2,25 @@
  * 回答シートと管理シートへの読み書きを一か所に集約する。
  */
 function getResponseSpreadsheet_() {
-  const id = getScriptProperty_(ASTRA_CONFIG.PROPERTY_KEYS.RESPONSE_SPREADSHEET_ID, true);
-  return SpreadsheetApp.openById(id);
+  const id = getScriptProperty_(ASTRA_CONFIG.PROPERTY_KEYS.RESPONSE_SPREADSHEET_ID, false);
+  if (id) return SpreadsheetApp.openById(id);
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+  throw new Error(
+    'このスクリプトが回答スプレッドシートに紐付いていません。' +
+    'Script Properties に RESPONSE_SPREADSHEET_ID を設定してください。'
+  );
 }
 
 function getResponseSheet_() {
   const spreadsheet = getResponseSpreadsheet_();
-  const sheet = spreadsheet.getSheetByName(ASTRA_CONFIG.RESPONSE_SHEET_NAME);
+  const sheetName = getResponseSheetName_();
+  const sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
-    throw new Error('回答シート「' + ASTRA_CONFIG.RESPONSE_SHEET_NAME + '」が見つかりません。');
+    throw new Error(
+      '回答シート「' + sheetName + '」が見つかりません。' +
+      'シート名が異なる場合は Script Properties の RESPONSE_SHEET_NAME に実際の名前を設定してください。'
+    );
   }
   return sheet;
 }
@@ -148,15 +158,76 @@ function findProcessableRows_(sheet, limit) {
     const status = stringValue_(statuses[offset][0]);
     const lastProcessed = processedAts[offset] ? processedAts[offset][0] : null;
     const attemptCount = attempts[offset] ? Number(attempts[offset][0] || 0) : 0;
-    const isStale = attemptCount < 3 && status === ASTRA_CONFIG.STATUS.PROCESSING &&
+    const isStale = attemptCount < ASTRA_CONFIG.MAX_ATTEMPTS &&
+      status === ASTRA_CONFIG.STATUS.PROCESSING &&
       lastProcessed instanceof Date &&
       now - lastProcessed.getTime() > staleMillis;
-    const canRetryError = status === ASTRA_CONFIG.STATUS.ERROR && attemptCount < 3;
+    const canRetryError = status === ASTRA_CONFIG.STATUS.ERROR && attemptCount < ASTRA_CONFIG.MAX_ATTEMPTS;
     if (!status || status === ASTRA_CONFIG.STATUS.PENDING || canRetryError || isStale) {
       rows.push(ASTRA_CONFIG.HEADER_ROW + 1 + offset);
     }
   }
   return rows;
+}
+
+function markExhaustedProcessingRows_(sheet) {
+  const index = createHeaderIndex_(readHeaders_(sheet));
+  const statusColumn = index['【システム】処理状態'];
+  const processedAtColumn = index['【システム】最終処理日時'];
+  const attemptColumn = index['【システム】試行回数'];
+  const caseIdColumn = index['【システム】案件ID'];
+  if (!statusColumn || !processedAtColumn || !attemptColumn) return;
+  if (sheet.getLastRow() <= ASTRA_CONFIG.HEADER_ROW) return;
+
+  const rowCount = sheet.getLastRow() - ASTRA_CONFIG.HEADER_ROW;
+  const statuses = sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, statusColumn, rowCount).getDisplayValues();
+  const processedAts = sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, processedAtColumn, rowCount).getValues();
+  const attempts = sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, attemptColumn, rowCount).getDisplayValues();
+  const caseIds = caseIdColumn
+    ? sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, caseIdColumn, rowCount).getDisplayValues()
+    : [];
+  const now = Date.now();
+  const staleMillis = ASTRA_CONFIG.PROCESSING_TIMEOUT_MINUTES * 60 * 1000;
+
+  for (let offset = 0; offset < rowCount; offset += 1) {
+    const status = stringValue_(statuses[offset][0]);
+    if (status !== ASTRA_CONFIG.STATUS.PROCESSING) continue;
+    const attemptCount = Number(attempts[offset][0] || 0);
+    if (attemptCount < ASTRA_CONFIG.MAX_ATTEMPTS) continue;
+    const lastProcessed = processedAts[offset][0];
+    if (!(lastProcessed instanceof Date) || now - lastProcessed.getTime() <= staleMillis) continue;
+
+    const rowNumber = ASTRA_CONFIG.HEADER_ROW + 1 + offset;
+    const caseId = caseIds[offset] ? stringValue_(caseIds[offset][0]) : '';
+    const message = '自動再試行の上限（' + ASTRA_CONFIG.MAX_ATTEMPTS + '回）に達したため処理を中断しました。処理ログを確認し、原因解消後にメニューから再生成してください。';
+    writeSystemValues_(sheet, rowNumber, {
+      '【システム】処理状態': ASTRA_CONFIG.STATUS.ERROR,
+      '【システム】確認状態': ASTRA_CONFIG.REVIEW_STATUS.NEEDS_REVIEW,
+      '【システム】最終処理日時': new Date(),
+      '【システム】エラー内容': message
+    });
+    appendLog_('ERROR', caseId, rowNumber, '再試行上限', message);
+    notifySystemError_(caseId, rowNumber, new Error(message));
+  }
+}
+
+function markLegacyRowsSkipped_(sheet) {
+  const index = createHeaderIndex_(readHeaders_(sheet));
+  const statusColumn = index['【システム】処理状態'];
+  if (!statusColumn || sheet.getLastRow() <= ASTRA_CONFIG.HEADER_ROW) return 0;
+
+  const rowCount = sheet.getLastRow() - ASTRA_CONFIG.HEADER_ROW;
+  const range = sheet.getRange(ASTRA_CONFIG.HEADER_ROW + 1, statusColumn, rowCount);
+  const statuses = range.getDisplayValues();
+  let marked = 0;
+  statuses.forEach(function(row) {
+    if (!stringValue_(row[0])) {
+      row[0] = ASTRA_CONFIG.STATUS.SKIPPED;
+      marked += 1;
+    }
+  });
+  if (marked) range.setValues(statuses);
+  return marked;
 }
 
 function ensureManagementSheets_() {
@@ -191,11 +262,13 @@ function writeSettingsSnapshot_(sheet) {
   const rows = [
     ['VERSION', ASTRA_CONFIG.VERSION, 'ローカルコードの版'],
     ['ROOT_FOLDER_ID', properties.ROOT_FOLDER_ID || '', '親フォルダ'],
-    ['OUTPUT_FOLDER_ID', properties.OUTPUT_FOLDER_ID || '', '顧客別フォルダの保存先'],
-    ['TEMPLATE_FOLDER_ID', properties.TEMPLATE_FOLDER_ID || '', '差込テンプレート保存先'],
+    ['OUTPUT_FOLDER_ID', properties.OUTPUT_FOLDER_ID || '', '顧客別フォルダの保存先（必須）'],
+    ['TEMPLATE_FOLDER_ID', properties.TEMPLATE_FOLDER_ID || '', '差込テンプレート保存先（必須）'],
+    ['RESPONSE_SHEET_NAME', properties.RESPONSE_SHEET_NAME || ASTRA_CONFIG.RESPONSE_SHEET_NAME, '回答シート名（変更時のみ設定）'],
     ['TEMPLATE_CONFIRMATION_ID', properties.TEMPLATE_CONFIRMATION_ID || '', '申請内容確認書テンプレート'],
     ['TEMPLATE_REQUIREMENTS_ID', properties.TEMPLATE_REQUIREMENTS_ID || '', '必要書類リストテンプレート'],
-    ['PDF_ENABLED', properties.PDF_ENABLED || 'false', 'true のときPDFも生成'],
+    ['PDF_ENABLED', properties.PDF_ENABLED || 'false', 'true のとき生成時にPDFも作成（メニューから手動書き出しも可）'],
+    ['NOTIFICATION_EMAIL', properties.NOTIFICATION_EMAIL || '', '処理エラー時の通知先メール（空なら通知しない）'],
     ['注意', '住所は自動変換しない', '顧客入力を暫定転記し、行政書士が必要に応じて修正・照合する'],
     ['住民票等', '提出は任意', '問い合わせ段階の入力負担を増やさない']
   ];

@@ -26,6 +26,12 @@ function onFormSubmitInstalled_(event) {
   }
   const sheet = event.range.getSheet();
   const rowNumber = event.range.getRow();
+  if (sheet.getName() !== getResponseSheetName_()) {
+    appendLog_('WARN', '', rowNumber, 'フォーム送信',
+      '対象外シート「' + sheet.getName() + '」への送信のため処理しません。' +
+      '本命フォームのシートなら Script Properties の RESPONSE_SHEET_NAME を更新してください。');
+    return;
+  }
   markRowPending_(sheet, rowNumber);
 
   try {

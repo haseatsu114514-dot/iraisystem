@@ -3,7 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const releaseRoot = path.join(root, 'release', 'astra-gas-mvp-0.1.0');
+const { version } = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
+const releaseRoot = path.join(root, 'release', `astra-gas-mvp-${version}`);
 const gasOutput = path.join(releaseRoot, 'gas');
 const docsOutput = path.join(releaseRoot, 'docs');
 const orderedGasFiles = [
